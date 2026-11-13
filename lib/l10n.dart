@@ -63,6 +63,7 @@ class L10n extends ChangeNotifier {
     'unlimited': ['Unlimited', 'غير محدود'],
     'hidden': ['Hidden', 'مخفي'],
     'channel_list': ['Channels', 'القنوات'],
+    'pip': ['Picture in picture', 'صورة داخل صورة'],
     'all_channels': ['All channels', 'كل القنوات'],
     'continue_watching': ['Continue watching', 'تابع المشاهدة'],
     'fav_channels': ['Favorite channels', 'قنواتك المفضلة'],

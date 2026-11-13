@@ -17,6 +17,8 @@ dependencies:
   media_kit_video: any
   media_kit_libs_video: any
   wakelock_plus: any
+  native_pip:
+    path: packages/native_pip
 
 dev_dependencies:
   flutter_test:

@@ -13,8 +13,21 @@ if m.exists():
     s = re.sub(r'android:label="[^"]*"', f'android:label="{NAME}"', s, count=1)
     if 'usesCleartextTraffic' not in s:
         s = s.replace('<application', '<application\n        android:usesCleartextTraffic="true"', 1)
+    if 'supportsPictureInPicture' not in s:
+        s = s.replace('android:name=".MainActivity"', 'android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:resizeableActivity="true"', 1)
     m.write_text(s)
     print('patched', m)
+
+# MainActivity with Picture in Picture (replaces the generated one)
+src = pathlib.Path(__file__).parent / 'android' / 'MainActivity.kt'
+for ma in list((root / 'android/app/src/main').rglob('MainActivity.*')):
+    pkg = re.search(r'^package\s+([\w.]+)', ma.read_text(), re.M)
+    code = src.read_text()
+    if pkg:
+        code = re.sub(r'^package\s+[\w.]+', f'package {pkg.group(1)}', code, count=1, flags=re.M)
+    ma.unlink()
+    (ma.parent / 'MainActivity.kt').write_text(code)
+    print('replaced', ma)
 
 # ---------- iOS ----------
 p = root / 'ios/Runner/Info.plist'

@@ -399,6 +399,13 @@ class Api {
     return '${acc!.url}/live/${_p(acc!.user)}/${_p(acc!.pass)}/$id.$ext';
   }
 
+  /// HLS variant of a live channel (for the iOS native player), or null if the account can't use HLS.
+  String? liveHlsUrl(Object id) {
+    final f = (acc!.info['allowed_output_formats'] as List?)?.map((e) => '$e').toList() ?? [];
+    if (f.isNotEmpty && !f.contains('m3u8')) return null;
+    return '${acc!.url}/live/${_p(acc!.user)}/${_p(acc!.pass)}/$id.m3u8';
+  }
+
   String movieUrl(Object id, Object? ext) => '${acc!.url}/movie/${_p(acc!.user)}/${_p(acc!.pass)}/$id.${ext ?? 'mp4'}';
   String episodeUrl(Object id, Object? ext) => '${acc!.url}/series/${_p(acc!.user)}/${_p(acc!.pass)}/$id.${ext ?? 'mp4'}';
 }

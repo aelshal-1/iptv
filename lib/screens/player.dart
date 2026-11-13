@@ -1,12 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../api.dart';
+import '../engine.dart';
 import '../l10n.dart';
 import '../store.dart';
 import '../theme.dart';
@@ -29,6 +29,15 @@ class PlayItem {
     this.season,
   });
   bool get isLive => type == 'live';
+
+  static const _nativeExt = {'mp4', 'm4v', 'mov', 'm3u8'};
+
+  /// URL the iOS native player (with Picture in Picture) can play, or null.
+  String? get nativeUrl {
+    if (isLive) return Api.i.liveHlsUrl(id);
+    final e = (ext ?? url.split('.').last).toLowerCase();
+    return _nativeExt.contains(e) ? url : null;
+  }
 }
 
 class PlayerScreen extends StatefulWidget {
@@ -81,15 +90,12 @@ class PlayerScreen extends StatefulWidget {
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends State<PlayerScreen> {
-  late final Player _player = Player(configuration: PlayerConfiguration(title: 'IPTV Player', bufferSize: 64 * 1024 * 1024));
-  late final VideoController _video = VideoController(_player);
-  final List<StreamSubscription> _subs = [];
-
+class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver {
+  Engine? _engine;
   late List<PlayItem> _items = [...widget.items];
   late int _i = widget.index;
-  int? _pendingSeek;
   bool _tracksApplied = false;
+  bool _nativeFailed = false;
 
   bool _controls = true;
   Timer? _hideTimer;
@@ -100,40 +106,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String _epg = '';
   DateTime _lastSave = DateTime.fromMillisecondsSinceEpoch(0);
 
+  bool _pipSupported = false, _inPip = false;
+
   PlayItem get _cur => _items[_i];
   bool get _hasNext => !_cur.isLive && _i < _items.length - 1;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     WakelockPlus.enable();
-    final s = _player.stream;
-    _subs.addAll([
-      s.playing.listen((v) => _set(() => _playing = v)),
-      s.buffering.listen((v) => _set(() => _buffering = v)),
-      s.position.listen((v) {
-        if (!mounted) return;
-        setState(() => _pos = v);
-        if (DateTime.now().difference(_lastSave).inSeconds >= 10) _save();
-      }),
-      s.duration.listen((v) {
-        _set(() => _dur = v);
-        if (_pendingSeek != null && v > Duration.zero) {
-          final ms = _pendingSeek!;
-          _pendingSeek = null;
-          if (ms < v.inMilliseconds - 5000) _player.seek(Duration(milliseconds: ms));
-        }
-      }),
-      s.tracks.listen((_) => _applyTrackPrefs()),
-      s.completed.listen((done) {
-        if (done && _hasNext) _go(_i + 1);
-      }),
-      s.error.listen((e) {
-        if (mounted && _pos == Duration.zero) setState(() => _error = e);
-      }),
-    ]);
+    if (Platform.isAndroid) {
+      AndroidPip.onChanged = (v) => _set(() {
+            _inPip = v;
+            if (v) _controls = false;
+          });
+      AndroidPip.onStopped = () => _engine?.pause();
+      AndroidPip.supported().then((v) {
+        _set(() => _pipSupported = v);
+        if (v) AndroidPip.setAuto(true);
+      });
+    }
     _play(widget.startMs);
     _maybeLoadSeries();
     _armHide();
@@ -143,8 +138,53 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (mounted) setState(fn);
   }
 
+  bool _wantNative(PlayItem it) => Platform.isIOS && !_nativeFailed && it.nativeUrl != null;
+
+  /// Create (or swap) the engine that fits the current item.
+  Future<Engine> _engineFor(PlayItem it) async {
+    final native = _wantNative(it);
+    final e = _engine;
+    if (e != null && e.isNative == native) return e;
+    _engine = null;
+    if (e != null) await e.dispose();
+    final n = native ? AvEngine() : MpvEngine();
+    n.onState = (playing, buffering, pos, dur) {
+      _set(() {
+        _playing = playing;
+        _buffering = buffering;
+        _pos = pos;
+        _dur = dur;
+      });
+      if (DateTime.now().difference(_lastSave).inSeconds >= 10) _save();
+    };
+    n.onTracks = _applyTrackPrefs;
+    n.onCompleted = () {
+      if (_hasNext) _go(_i + 1);
+    };
+    n.onError = (msg) {
+      if (n.isNative && !_nativeFailed) {
+        // AVPlayer can't play it: fall back to libmpv (no PiP for this one).
+        _nativeFailed = true;
+        _play(_pos.inMilliseconds > 0 ? _pos.inMilliseconds : null);
+        return;
+      }
+      if (_pos == Duration.zero) _set(() => _error = msg);
+    };
+    n.onSize = (w, h) {
+      if (Platform.isAndroid && _pipSupported) AndroidPip.setAuto(true, w: w, h: h);
+    };
+    n.onPip = (v) => _set(() => _inPip = v);
+    _engine = n;
+    if (Platform.isIOS) {
+      final ok = native && await n.pipSupported();
+      _set(() => _pipSupported = ok);
+    }
+    _set(() {});
+    return n;
+  }
+
   Future<void> _play(int? startMs) async {
-    setState(() {
+    _set(() {
       _error = null;
       _pos = Duration.zero;
       _dur = Duration.zero;
@@ -152,9 +192,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _tracksApplied = false;
       _epg = '';
     });
-    _pendingSeek = (startMs != null && startMs > 0) ? startMs : null;
-    await _player.open(Media(_cur.url));
-    if (_cur.isLive) _loadEpg();
+    final it = _cur;
+    final e = await _engineFor(it);
+    if (!mounted) return;
+    await e.open(e.isNative ? it.nativeUrl! : it.url, startMs: (startMs != null && startMs > 0) ? startMs : null);
+    if (it.isLive) _loadEpg();
   }
 
   Future<void> _loadEpg() async {
@@ -164,7 +206,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (!mounted || _cur.id != id) return;
       final now = l.isNotEmpty ? Api.b64(l.first['title']) : '';
       final next = l.length > 1 ? Api.b64(l[1]['title']) : '';
-      setState(() => _epg = [if (now.isNotEmpty) now, if (next.isNotEmpty) '${tr('next')}: $next'].join('   ·   '));
+      _set(() => _epg = [if (now.isNotEmpty) now, if (next.isNotEmpty) '${tr('next')}: $next'].join('   ·   '));
     } catch (_) {}
   }
 
@@ -180,8 +222,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final info = (d['info'] as Map?) ?? {};
       final list = episodePlayItems({'series_id': c.seriesId}, '${info['name'] ?? c.title}', firstImage(info['cover']) ?? c.icon, s, seasons[s]!);
       final idx = list.indexWhere((p) => p.key == c.key);
-      if (idx >= 0 && mounted) {
-        setState(() {
+      if (idx >= 0) {
+        _set(() {
           _items = list;
           _i = idx;
         });
@@ -189,41 +231,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (_) {}
   }
 
-  void _applyTrackPrefs() {
-    if (_tracksApplied) return;
-    final t = _player.state.tracks;
-    final subs = _realSubs(t.subtitle);
-    final auds = _realAudio(t.audio);
-    if (subs.isEmpty && auds.length < 2) return;
+  Future<void> _applyTrackPrefs() async {
+    final e = _engine;
+    if (e == null || _tracksApplied) return;
+    final t = await e.tracks();
+    if (t.subs.isEmpty && t.audio.length < 2) return;
     _tracksApplied = true;
     final sp = Store.get('subPref');
     if (sp == 'off') {
-      _player.setSubtitleTrack(SubtitleTrack.no());
+      await e.selectSub(null);
     } else if (sp is String && sp.isNotEmpty) {
-      for (final s in subs) {
-        if ((s.language ?? '') == sp) {
-          _player.setSubtitleTrack(s);
+      for (final s in t.subs) {
+        if (s.lang == sp) {
+          await e.selectSub(s.id);
           break;
         }
       }
     }
     final ap = Store.get('audioPref');
     if (ap is String && ap.isNotEmpty) {
-      for (final a in auds) {
-        if ((a.language ?? '') == ap) {
-          _player.setAudioTrack(a);
+      for (final a in t.audio) {
+        if (a.lang == ap) {
+          await e.selectAudio(a.id);
           break;
         }
       }
     }
-  }
-
-  List<SubtitleTrack> _realSubs(List<SubtitleTrack> l) => l.where((s) => s.id != 'auto' && s.id != 'no').toList();
-  List<AudioTrack> _realAudio(List<AudioTrack> l) => l.where((s) => s.id != 'auto' && s.id != 'no').toList();
-
-  String _trackLabel(String id, String? title, String? lang, int n) {
-    final parts = [if ((title ?? '').isNotEmpty) title!, if ((lang ?? '').isNotEmpty) lang!.toUpperCase()];
-    return parts.isEmpty ? '#$n' : parts.join(' · ');
   }
 
   void _save() {
@@ -249,6 +282,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (i < 0 || i >= _items.length) return;
     _save();
     setState(() => _i = i);
+    _nativeFailed = false;
     final p = Store.progressOf(_items[i].key);
     _play(_items[i].isLive ? null : (p?['pos'] as num?)?.toInt());
     _armHide();
@@ -262,24 +296,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _toggleControls() {
+    if (_inPip) return;
     setState(() => _controls = !_controls);
     if (_controls) _armHide();
   }
 
   void _seekBy(int sec) {
     final t = _pos + Duration(seconds: sec);
-    _player.seek(t < Duration.zero ? Duration.zero : t);
+    _engine?.seek(t < Duration.zero ? Duration.zero : t);
     _armHide();
+  }
+
+  Future<void> _startPip() async {
+    if (Platform.isAndroid) {
+      await AndroidPip.enter();
+    } else {
+      await _engine?.startPip();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _save();
     _hideTimer?.cancel();
-    for (final s in _subs) {
-      s.cancel();
+    if (Platform.isAndroid) {
+      AndroidPip.setAuto(false);
+      AndroidPip.onChanged = null;
+      AndroidPip.onStopped = null;
     }
-    _player.dispose();
+    _engine?.dispose();
     WakelockPlus.disable();
     SystemChrome.setPreferredOrientations([]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -294,57 +340,61 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /* ---------------- sheets ---------------- */
   void _tracksSheet() {
+    final e = _engine;
+    if (e == null) return;
     _hideTimer?.cancel();
     showModalBottomSheet(
       context: context,
       backgroundColor: C.surface,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => StreamBuilder<Track>(
-        stream: _player.stream.track,
-        initialData: _player.state.track,
-        builder: (ctx, snap) {
-          final cur = snap.data ?? _player.state.track;
-          final subs = _realSubs(_player.state.tracks.subtitle);
-          final auds = _realAudio(_player.state.tracks.audio);
-          final subOff = cur.subtitle.id == 'no' || subs.isEmpty;
-          Widget opt(String label, bool sel, VoidCallback onTap) => ListTile(
-                dense: true,
-                title: Text(label),
-                trailing: sel ? const Icon(Icons.check, color: C.gold) : null,
-                onTap: onTap,
+      builder: (ctx) {
+        Future<TrackSet> load = e.tracks();
+        return StatefulBuilder(
+          builder: (ctx, setSheet) => FutureBuilder<TrackSet>(
+            future: load,
+            builder: (ctx, snap) {
+              final t = snap.data ?? TrackSet.empty;
+              void after(Future<void> f) => f.then((_) => Future.delayed(const Duration(milliseconds: 250))).then((_) => setSheet(() => load = e.tracks()));
+              Widget opt(String label, bool sel, VoidCallback onTap) => ListTile(
+                    dense: true,
+                    title: Text(label),
+                    trailing: sel ? const Icon(Icons.check, color: C.gold) : null,
+                    onTap: onTap,
+                  );
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+                child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(8, 0, 8, 20), children: [
+                  Padding(padding: const EdgeInsets.all(12), child: Text(tr('subtitles'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16))),
+                  if (t.subs.isEmpty)
+                    Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(tr('no_subs'), style: const TextStyle(color: C.dimmer)))
+                  else ...[
+                    opt(tr('subs_off'), t.subSel == null, () {
+                      Store.set('subPref', 'off');
+                      after(e.selectSub(null));
+                    }),
+                    for (final s in t.subs)
+                      opt(s.label, t.subSel == s.id, () {
+                        Store.set('subPref', s.lang);
+                        after(e.selectSub(s.id));
+                      }),
+                  ],
+                  const Divider(height: 24),
+                  Padding(padding: const EdgeInsets.all(12), child: Text(tr('audio'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16))),
+                  if (t.audio.length < 2)
+                    Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(tr('one_audio'), style: const TextStyle(color: C.dimmer)))
+                  else
+                    for (final a in t.audio)
+                      opt(a.label, t.audioSel == a.id, () {
+                        Store.set('audioPref', a.lang);
+                        after(e.selectAudio(a.id));
+                      }),
+                ]),
               );
-          return ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
-            child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(8, 0, 8, 20), children: [
-              Padding(padding: const EdgeInsets.all(12), child: Text(tr('subtitles'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16))),
-              if (subs.isEmpty)
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(tr('no_subs'), style: const TextStyle(color: C.dimmer)))
-              else ...[
-                opt(tr('subs_off'), subOff, () {
-                  _player.setSubtitleTrack(SubtitleTrack.no());
-                  Store.set('subPref', 'off');
-                }),
-                for (var n = 0; n < subs.length; n++)
-                  opt(_trackLabel(subs[n].id, subs[n].title, subs[n].language, n + 1), cur.subtitle.id == subs[n].id, () {
-                    _player.setSubtitleTrack(subs[n]);
-                    Store.set('subPref', subs[n].language ?? '');
-                  }),
-              ],
-              const Divider(height: 24),
-              Padding(padding: const EdgeInsets.all(12), child: Text(tr('audio'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16))),
-              if (auds.length < 2)
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(tr('one_audio'), style: const TextStyle(color: C.dimmer)))
-              else
-                for (var n = 0; n < auds.length; n++)
-                  opt(_trackLabel(auds[n].id, auds[n].title, auds[n].language, n + 1), cur.audio.id == auds[n].id, () {
-                    _player.setAudioTrack(auds[n]);
-                    Store.set('audioPref', auds[n].language ?? '');
-                  }),
-            ]),
-          );
-        },
-      ),
+            },
+          ),
+        );
+      },
     ).whenComplete(_armHide);
   }
 
@@ -384,6 +434,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final c = _cur;
+    final e = _engine;
+    final video = e == null ? const SizedBox.expand() : KeyedSubtree(key: ValueKey(e), child: e.view());
+    // Android Picture in Picture: the window shows only the video.
+    if (_inPip && Platform.isAndroid) {
+      return Scaffold(backgroundColor: Colors.black, body: SizedBox.expand(child: video));
+    }
     final durMs = _dur.inMilliseconds.toDouble();
     final posMs = (_dragMs ?? _pos.inMilliseconds.toDouble()).clamp(0.0, durMs > 0 ? durMs : 0.0).toDouble();
     return Scaffold(
@@ -399,16 +455,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
               },
         onDoubleTap: c.isLive ? null : () {},
         child: Stack(fit: StackFit.expand, children: [
-          Video(
-            controller: _video,
-            controls: NoVideoControls,
-            fill: Colors.black,
-            subtitleViewConfiguration: SubtitleViewConfiguration(
-              style: TextStyle(fontSize: 26, color: Colors.white, backgroundColor: Color(0x99000000), height: 1.3),
-              padding: EdgeInsets.fromLTRB(24, 0, 24, 28),
-            ),
-          ),
-          if (_buffering && _error == null) const Center(child: CircularProgressIndicator(color: C.gold)),
+          video,
+          if (_buffering && _error == null && !_inPip) const Center(child: CircularProgressIndicator(color: C.gold)),
           if (_error != null)
             Center(
               child: Glass(
@@ -448,7 +496,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Column(children: [
-            // top bar
             Row(children: [
               IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
               const SizedBox(width: 4),
@@ -478,10 +525,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   },
                 ),
               if (c.isLive && _items.length > 1) IconButton(tooltip: tr('channel_list'), icon: const Icon(Icons.list_rounded), onPressed: _channelSheet),
+              if (_pipSupported) IconButton(tooltip: tr('pip'), icon: const Icon(Icons.picture_in_picture_alt_rounded), onPressed: _startPip),
               IconButton(tooltip: tr('subs_audio'), icon: const Icon(Icons.subtitles_outlined), onPressed: _tracksSheet),
             ]),
             const Spacer(),
-            // center controls
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               if (c.isLive)
                 _RoundBtn(icon: Icons.skip_previous_rounded, onTap: _i > 0 ? () => _go(_i - 1) : null)
@@ -492,7 +539,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 icon: _playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                 big: true,
                 onTap: () {
-                  _player.playOrPause();
+                  _engine?.playOrPause();
                   _armHide();
                 },
               ),
@@ -503,7 +550,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 _RoundBtn(icon: Icons.forward_10_rounded, onTap: () => _seekBy(10)),
             ]),
             const Spacer(),
-            // bottom bar
             if (!c.isLive)
               Row(children: [
                 Text(_fmt(Duration(milliseconds: posMs.toInt())), style: const TextStyle(fontSize: 12, fontFeatures: [FontFeature.tabularFigures()])),
@@ -516,7 +562,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onChangeStart: (_) => _hideTimer?.cancel(),
                       onChanged: durMs > 0 ? (v) => setState(() => _dragMs = v) : null,
                       onChangeEnd: (v) {
-                        _player.seek(Duration(milliseconds: v.toInt()));
+                        _engine?.seek(Duration(milliseconds: v.toInt()));
                         setState(() => _dragMs = null);
                         _armHide();
                       },
