@@ -3,6 +3,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'api.dart';
 import 'cast.dart';
+import 'downloads.dart';
 import 'l10n.dart';
 import 'screens/login.dart';
 import 'screens/shell.dart';
@@ -15,6 +16,7 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   await Store.init();
   Cast.init();
+  Downloads.i.init();
   L10n.i.ar = Store.get('lang') == 'ar';
   Widget first = const LoginScreen();
   if (Api.i.restore()) {

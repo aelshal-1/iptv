@@ -20,6 +20,7 @@ dependencies:
   volume_controller: any
   screen_brightness: any
   flutter_chrome_cast: any
+  background_downloader: any
   native_pip:
     path: packages/native_pip
 

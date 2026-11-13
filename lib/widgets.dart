@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'api.dart';
+import 'downloads.dart';
 import 'l10n.dart';
 import 'main.dart';
 import 'screens/detail.dart';
@@ -219,4 +220,99 @@ Future<int?> refreshWithProgress(BuildContext context, String kind, String cat) 
     toast(context, error != null ? errText(error, tr) : '${tr('updated')} · $count ${tr('items')}');
   }
   return count;
+}
+
+/// Download control for a movie or episode. [compact] = icon only (episode rows).
+class DownloadButton extends StatelessWidget {
+  final PlayItem item;
+  final bool compact;
+  const DownloadButton({super.key, required this.item, this.compact = false});
+
+  void _menu(BuildContext context, List<(IconData, String, VoidCallback, bool)> actions) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: C.surface,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis), subtitle: item.sub != null ? Text(item.sub!, style: const TextStyle(color: C.dimmer)) : null),
+          for (final a in actions)
+            ListTile(
+              leading: Icon(a.$1, color: a.$4 ? C.red : null),
+              title: Text(a.$2, style: TextStyle(color: a.$4 ? C.red : null)),
+              onTap: () {
+                Navigator.pop(ctx);
+                a.$3();
+              },
+            ),
+        ]),
+      ),
+    );
+  }
+
+  void _tap(BuildContext context) {
+    final d = Downloads.i;
+    final k = item.key;
+    if (d.isDownloaded(k)) {
+      _menu(context, [(Icons.delete_outline, tr('delete_dl'), () => d.remove(k), true)]);
+    } else if (d.isFailed(k)) {
+      d.retry(k);
+    } else if (d.isActive(k)) {
+      _menu(context, [
+        if (d.isPaused(k)) (Icons.play_arrow_rounded, tr('resume_dl'), () => d.resume(k), false) else (Icons.pause_rounded, tr('pause_dl'), () => d.pause(k), false),
+        (Icons.close_rounded, tr('cancel_dl'), () => d.remove(k), true),
+      ]);
+    } else {
+      d.start(key: k, url: item.url, type: item.type, id: item.id, name: item.title, sub: item.sub, icon: item.icon, ext: item.ext, seriesId: item.seriesId, season: item.season);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('${tr('dl_started')}. ${tr('dl_note')}'), duration: const Duration(seconds: 4)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder(
+      valueListenable: Downloads.i.tick,
+      builder: (context, _, __) {
+        final d = Downloads.i;
+        final k = item.key;
+        final done = d.isDownloaded(k), active = d.isActive(k), failed = d.isFailed(k), paused = d.isPaused(k);
+        final p = d.progressOf(k);
+        if (compact) {
+          Widget icon;
+          if (done) {
+            icon = const Icon(Icons.download_done_rounded, color: C.gold);
+          } else if (failed) {
+            icon = const Icon(Icons.error_outline, color: C.red);
+          } else if (active) {
+            icon = SizedBox(
+              width: 24,
+              height: 24,
+              child: Stack(alignment: Alignment.center, children: [
+                CircularProgressIndicator(value: p > 0 ? p : null, strokeWidth: 2.5, color: C.gold, backgroundColor: Colors.white12),
+                Icon(paused ? Icons.play_arrow_rounded : Icons.pause_rounded, size: 13),
+              ]),
+            );
+          } else {
+            icon = const Icon(Icons.download_rounded, color: C.dim);
+          }
+          return IconButton(tooltip: tr('download'), icon: icon, onPressed: () => _tap(context));
+        }
+        final label = done
+            ? tr('dl_done')
+            : failed
+                ? tr('retry_dl')
+                : active
+                    ? '${tr(paused ? 'paused' : 'downloading')} ${(p * 100).floor()}%'
+                    : tr('download');
+        return OutlinedButton.icon(
+          onPressed: () => _tap(context),
+          icon: Icon(done ? Icons.download_done_rounded : failed ? Icons.error_outline : active ? (paused ? Icons.pause_circle_outline : Icons.downloading_rounded) : Icons.download_rounded,
+              color: done ? C.gold : failed ? C.red : null),
+          label: Text(label),
+        );
+      },
+    );
+  }
 }

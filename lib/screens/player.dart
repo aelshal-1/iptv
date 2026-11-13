@@ -10,6 +10,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../api.dart';
 import '../cast.dart';
+import '../downloads.dart';
 import '../engine.dart';
 import '../l10n.dart';
 import '../store.dart';
@@ -324,7 +325,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (mounted) setState(fn);
   }
 
-  bool _wantNative(PlayItem it) => Platform.isIOS && !_nativeFailed && it.nativeUrl != null;
+  /// Plays the downloaded file when there is one.
+  String _src(PlayItem it) => Downloads.i.localPath(it.key) ?? it.url;
+  String? _nativeSrc(PlayItem it) {
+    final local = Downloads.i.localPath(it.key);
+    if (local == null) return it.nativeUrl;
+    return PlayItem._nativeExt.contains(local.split('.').last.toLowerCase()) ? Uri.file(local).toString() : null;
+  }
+
+  bool _wantNative(PlayItem it) => Platform.isIOS && !_nativeFailed && _nativeSrc(it) != null;
 
   /// Create (or swap) the engine that fits the current item.
   Future<Engine> _engineFor(PlayItem it) async {
@@ -382,7 +391,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     final it = _cur;
     final e = await _engineFor(it);
     if (!mounted) return;
-    await e.open(e.isNative ? it.nativeUrl! : it.url, startMs: (startMs != null && startMs > 0) ? startMs : null);
+    await e.open(e.isNative ? _nativeSrc(it)! : _src(it), startMs: (startMs != null && startMs > 0) ? startMs : null);
     if (it.isLive) {
       Store.addRecentLive({'id': it.id, 'name': it.title, 'icon': it.icon, 'num': it.sub});
       _loadEpg();

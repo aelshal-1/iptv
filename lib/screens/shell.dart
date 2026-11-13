@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../downloads.dart';
 import '../l10n.dart';
 import '../main.dart';
 import '../store.dart';
@@ -61,9 +62,9 @@ class HomeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: Store.tick,
-      builder: (context, _, __) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([Store.tick, Downloads.i.tick]),
+      builder: (context, _) {
         final recent = Store.recent();
         final favs = Store.favs();
         final favCh = favs.where((f) => f['type'] == 'live').toList();
@@ -137,6 +138,58 @@ class HomeTab extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 11.5, color: C.dimmer),
                           ),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            if (Downloads.i.all().isNotEmpty) ...[
+              SectionTitle(tr('downloads'),
+                  trailing: TextButton(
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DownloadsScreen())),
+                    child: Text(tr('all')),
+                  )),
+              SizedBox(
+                height: 104,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: Downloads.i.all().length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                  itemBuilder: (_, i) {
+                    final d = Downloads.i.all()[i];
+                    final it = playItemFromDownload(d);
+                    final done = Downloads.i.isDownloaded(it.key);
+                    return SizedBox(
+                      width: 150,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => done
+                            ? PlayerScreen.openVod(context, [it], 0, startMs: (Store.progressOf(it.key)?['pos'] as num?)?.toInt())
+                            : Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DownloadsScreen())),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Stack(fit: StackFit.expand, children: [
+                                NetImg(it.icon, label: it.title),
+                                Positioned(
+                                  top: 6,
+                                  right: 6,
+                                  child: Icon(done ? Icons.download_done_rounded : Icons.downloading_rounded, color: C.gold, size: 20),
+                                ),
+                                if (!done)
+                                  Align(
+                                    alignment: Alignment.bottomCenter,
+                                    child: LinearProgressIndicator(value: Downloads.i.progressOf(it.key), minHeight: 3, backgroundColor: Colors.black54, color: C.gold),
+                                  ),
+                              ]),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text([it.title, if (it.sub != null) it.sub].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
                         ]),
                       ),
                     );
@@ -539,6 +592,17 @@ class MoreTab extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoritesScreen())),
               ),
             ),
+            const SizedBox(height: 10),
+            Glass(
+              padding: EdgeInsets.zero,
+              child: ListTile(
+                leading: const Icon(Icons.download_for_offline_rounded, color: C.gold),
+                title: Text(tr('downloads')),
+                subtitle: Text('${Downloads.i.all().length} ${tr('items')} · ${mb(Downloads.i.totalBytes())}', style: const TextStyle(color: C.dimmer)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DownloadsScreen())),
+              ),
+            ),
             const SizedBox(height: 16),
             Glass(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -632,6 +696,101 @@ class FavoritesScreen extends StatelessWidget {
             if (sr.isNotEmpty) ...[SectionTitle(tr('series')), _PosterRow(kind: 'series', items: sr)],
           ]);
         },
+      ),
+    );
+  }
+}
+
+
+PlayItem playItemFromDownload(Map d) {
+  final type = '${d['type']}', id = '${d['id']}', ext = d['ext'] == null ? null : '${d['ext']}';
+  return PlayItem(
+    key: '${d['key']}',
+    type: type,
+    id: id,
+    ext: ext,
+    title: '${d['name'] ?? ''}',
+    sub: d['sub'] == null ? null : '${d['sub']}',
+    icon: d['icon'] == null ? null : '${d['icon']}',
+    url: type == 'episode' ? Api.i.episodeUrl(id, ext) : Api.i.movieUrl(id, ext),
+    seriesId: d['seriesId'] == null ? null : '${d['seriesId']}',
+    season: d['season'] == null ? null : '${d['season']}',
+  );
+}
+
+/// Downloaded and downloading movies and episodes; finished ones play offline.
+class DownloadsScreen extends StatelessWidget {
+  const DownloadsScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('downloads'))),
+      body: ValueListenableBuilder(
+        valueListenable: Downloads.i.tick,
+        builder: (context, _, __) {
+          final list = Downloads.i.all();
+          if (list.isEmpty) return EmptyNote(tr('no_downloads'), icon: Icons.download_for_offline_outlined);
+          return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Text('${tr('storage_used')}: ${mb(Downloads.i.totalBytes())}', style: const TextStyle(color: C.dimmer)),
+            ),
+            for (final d in list) _DownloadTile(d: d),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+class _DownloadTile extends StatelessWidget {
+  final Map<String, dynamic> d;
+  const _DownloadTile({required this.d});
+  @override
+  Widget build(BuildContext context) {
+    final it = playItemFromDownload(d);
+    final dl = Downloads.i;
+    final done = dl.isDownloaded(it.key);
+    final p = dl.progressOf(it.key);
+    final status = done
+        ? '${tr('dl_done')} · ${mb((d['size'] as num?)?.toInt() ?? 0)}'
+        : dl.isFailed(it.key)
+            ? tr('retry_dl')
+            : '${tr(dl.isPaused(it.key) ? 'paused' : 'downloading')} ${(p * 100).floor()}%';
+    return InkWell(
+      onTap: done
+          ? () {
+              final pos = (Store.progressOf(it.key)?['pos'] as num?)?.toInt();
+              PlayerScreen.openVod(context, [it], 0, startMs: pos);
+            }
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 120,
+              height: 68,
+              child: Stack(fit: StackFit.expand, children: [
+                NetImg(it.icon, label: it.title),
+                if (done) const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 30)),
+                if (!done)
+                  Align(alignment: Alignment.bottomCenter, child: LinearProgressIndicator(value: p, minHeight: 3, backgroundColor: Colors.black54, color: C.gold)),
+              ]),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500)),
+              if (it.sub != null) Text(it.sub!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: C.dim, fontSize: 12.5)),
+              const SizedBox(height: 2),
+              Text(status, style: TextStyle(color: dl.isFailed(it.key) ? C.red : C.dimmer, fontSize: 12)),
+            ]),
+          ),
+          DownloadButton(item: it, compact: true),
+        ]),
       ),
     );
   }

@@ -203,6 +203,7 @@ class _MovieDetailState extends State<MovieDetail> {
                 icon: const Icon(Icons.play_arrow_rounded),
                 label: Text(tr('play')),
               ),
+            DownloadButton(item: _playItem()),
             OutlinedButton.icon(
               onPressed: () => toggleFavToast(context, 'vod', x),
               icon: Icon(fav ? Icons.star_rounded : Icons.star_border_rounded, color: fav ? C.gold : null),
@@ -438,6 +439,7 @@ class _EpisodeTile extends StatelessWidget {
               if (plot.isNotEmpty) Text(plot, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: C.dim, fontSize: 12)),
             ]),
           ),
+          DownloadButton(item: item, compact: true),
         ]),
       ),
     );
