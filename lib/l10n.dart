@@ -1,0 +1,125 @@
+import 'package:flutter/foundation.dart';
+
+/// App language: English or Arabic (RTL). Switchable at any time.
+class L10n extends ChangeNotifier {
+  L10n._();
+  static final L10n i = L10n._();
+
+  bool ar = false;
+
+  void set(bool arabic) {
+    ar = arabic;
+    notifyListeners();
+  }
+
+  String t(String key) {
+    final e = _s[key];
+    if (e == null) return key;
+    return ar ? e[1] : e[0];
+  }
+
+  static const Map<String, List<String>> _s = {
+    'app': ['IPTV Player', 'مشغّل IPTV'],
+    'connect_title': ['Connect your playlist', 'اربط قائمة التشغيل'],
+    'connect_sub': ['Use the server, username and password your provider sent you.', 'استخدم بيانات السيرفر اللي وصلتك من مزوّد الخدمة.'],
+    'server': ['Server URL', 'عنوان السيرفر'],
+    'username': ['Username', 'اسم المستخدم'],
+    'password': ['Password', 'كلمة المرور'],
+    'connect': ['Connect', 'اتصال'],
+    'legal': ['This app plays streams from your own provider. It does not include any channels or content.', 'التطبيق بيشغّل البث من مزوّدك الخاص، ومفيهوش أي قنوات أو محتوى.'],
+    'err_missing': ['Enter the server URL and username', 'اكتب عنوان السيرفر واسم المستخدم'],
+    'err_auth': ['Wrong username or password', 'اسم المستخدم أو كلمة المرور غلط'],
+    'err_net': ["Can't reach the server. Check the internet connection", 'مش قادر يوصل للسيرفر. اتأكد من الإنترنت'],
+    'err_timeout': ['The server took too long to respond', 'السيرفر اتأخر في الرد'],
+    'err_status': ['Subscription is not active', 'الاشتراك مش فعّال'],
+    'sync_title': ['Getting your library ready', 'بنجهّز مكتبتك'],
+    'sync_sub': ['This happens once. After this, everything opens instantly.', 'ده بيحصل مرة واحدة بس، وبعدها كل حاجة هتفتح على طول.'],
+    'downloaded': ['downloaded', 'اتحمّل'],
+    'saving': ['Saving on this phone', 'بنحفظ على الموبايل'],
+    'try_again': ['Try again', 'حاول تاني'],
+    'continue': ['Continue', 'كمّل'],
+    's_live_cats': ['Live categories', 'أقسام البث المباشر'],
+    's_vod_cats': ['Movie categories', 'أقسام الأفلام'],
+    's_series_cats': ['Series categories', 'أقسام المسلسلات'],
+    's_live': ['Live channels', 'القنوات'],
+    's_vod': ['Movies', 'الأفلام'],
+    's_series': ['Series', 'المسلسلات'],
+    'home': ['Home', 'الرئيسية'],
+    'live': ['Live TV', 'البث المباشر'],
+    'movies': ['Movies', 'أفلام'],
+    'series': ['Series', 'مسلسلات'],
+    'search': ['Search', 'بحث'],
+    'more': ['More', 'المزيد'],
+    'favorites': ['Favorites', 'المفضلة'],
+    'all': ['All', 'الكل'],
+    'everything': ['Everything', 'الكل'],
+    'channels_word': ['channels', 'قناة'],
+    'arabic': ['Arabic', 'العربية'],
+    'english': ['English', 'الإنجليزية'],
+    'library_never': ['Not downloaded yet', 'لم يتم التنزيل بعد'],
+    'cast': ['Cast', 'طاقم التمثيل'],
+    'director': ['Director', 'المخرج'],
+    'retry': ['Retry', 'إعادة المحاولة'],
+    'unlimited': ['Unlimited', 'غير محدود'],
+    'hidden': ['Hidden', 'مخفي'],
+    'channel_list': ['Channels', 'القنوات'],
+    'all_channels': ['All channels', 'كل القنوات'],
+    'continue_watching': ['Continue watching', 'تابع المشاهدة'],
+    'fav_channels': ['Favorite channels', 'قنواتك المفضلة'],
+    'latest': ['Latest', 'الأحدث'],
+    'play': ['Play', 'تشغيل'],
+    'resume': ['Resume', 'استكمال'],
+    'from_start': ['From start', 'من الأول'],
+    'favorite': ['Favorite', 'المفضلة'],
+    'in_favorites': ['In favorites', 'في المفضلة'],
+    'categories': ['Categories', 'الأقسام'],
+    'arrange': ['Arrange', 'ترتيب'],
+    'done': ['Done', 'تم'],
+    'arrange_hint': ['Drag to reorder · tap the eye to hide', 'اسحب للترتيب · دوس العين للإخفاء'],
+    'search_in': ['Search in', 'ابحث في'],
+    'search_all': ['Channels, movies and series', 'القنوات والأفلام والمسلسلات'],
+    'sort': ['Sort', 'ترتيب'],
+    'sort_default': ['Default', 'الافتراضي'],
+    'sort_added': ['Newest', 'الأحدث'],
+    'sort_name': ['A–Z', 'أ–ي'],
+    'sort_rating': ['Top rated', 'الأعلى تقييماً'],
+    'refresh': ['Refresh', 'تحديث'],
+    'refreshing': ['Refreshing this list', 'جاري تحديث القائمة'],
+    'updated': ['Updated', 'اتحدّثت'],
+    'items': ['items', 'عنصر'],
+    'channels': ['channels', 'قناة'],
+    'nothing': ['Nothing here yet', 'مفيش محتوى هنا'],
+    'no_results': ['No results', 'مفيش نتايج'],
+    'season': ['Season', 'الموسم'],
+    'episode': ['Episode', 'الحلقة'],
+    'no_episodes': ['No episodes yet', 'مفيش حلقات لسه'],
+    'no_guide': ['No guide for this channel', 'مفيش دليل برامج للقناة دي'],
+    'next': ['Next', 'التالي'],
+    'live_badge': ['LIVE', 'مباشر'],
+    'subs_audio': ['Subtitles & audio', 'الترجمة والصوت'],
+    'subtitles': ['Subtitles', 'الترجمة'],
+    'audio': ['Audio', 'الصوت'],
+    'subs_off': ['Off (hide subtitles)', 'إيقاف (إخفاء الترجمة)'],
+    'no_subs': ['This video has no subtitles', 'الفيديو ده مفيهوش ترجمة'],
+    'one_audio': ['Only one audio track', 'مسار صوت واحد بس'],
+    'stream_error': ["This stream can't be played right now", 'البث ده مش شغال دلوقتي'],
+    'next_episode': ['Next episode', 'الحلقة التالية'],
+    'account': ['Account', 'الحساب'],
+    'status': ['Status', 'الحالة'],
+    'expires': ['Expires', 'ينتهي'],
+    'connections': ['Connections', 'عدد الأجهزة'],
+    'library_saved': ['Library saved', 'آخر تحديث للمكتبة'],
+    'refresh_all': ['Refresh everything', 'تحديث الكل'],
+    'clear_history': ['Clear watch history', 'مسح سجل المشاهدة'],
+    'history_cleared': ['Watch history cleared', 'اتمسح سجل المشاهدة'],
+    'sign_out': ['Sign out', 'تسجيل الخروج'],
+    'language': ['Language', 'اللغة'],
+    'min_left': ['min left', 'دقيقة متبقية'],
+    'added_fav': ['Added to favorites', 'اتضافت للمفضلة'],
+    'removed_fav': ['Removed from favorites', 'اتشالت من المفضلة'],
+    'no_favs': ['No favorites yet. Long-press a channel, or tap Favorite on a movie or series.', 'لسه مفيش مفضلة. اضغط مطوّل على أي قناة، أو "المفضلة" في صفحة الفيلم أو المسلسل.'],
+    'fav_fixed': ['Favorites are saved on this phone', 'المفضلة محفوظة على الموبايل'],
+  };
+}
+
+String tr(String key) => L10n.i.t(key);

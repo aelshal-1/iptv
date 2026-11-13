@@ -1,0 +1,36 @@
+name: iptv_player
+description: IPTV player for Xtream Codes accounts (Android & iOS).
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: any
+  shared_preferences: any
+  path_provider: any
+  google_fonts: any
+  media_kit: any
+  media_kit_video: any
+  media_kit_libs_video: any
+  wakelock_plus: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: any
+  flutter_launcher_icons: any
+
+flutter:
+  uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/icon.png
+  adaptive_icon_background: "#060709"
+  adaptive_icon_foreground: assets/icon_fg.png
+  remove_alpha_ios: true
