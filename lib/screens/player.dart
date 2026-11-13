@@ -801,7 +801,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                   },
                 ),
               if (c.isLive && _items.length > 1) IconButton(tooltip: tr('channel_list'), icon: const Icon(Icons.list_rounded), onPressed: _channelSheet),
-              if (Cast.ready) IconButton(tooltip: tr('cast'), icon: const Icon(Icons.cast_rounded), onPressed: _startCast),
+              if (Cast.ready) IconButton(tooltip: tr('cast_tv'), icon: const Icon(Icons.cast_rounded), onPressed: _startCast),
               if (Platform.isIOS && (_engine?.isNative ?? false))
                 const SizedBox(width: 44, height: 44, child: UiKitView(viewType: 'iptv/airplay_button')),
               if (_pipSupported) IconButton(tooltip: tr('pip'), icon: const Icon(Icons.picture_in_picture_alt_rounded), onPressed: _startPip),

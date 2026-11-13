@@ -110,7 +110,7 @@ Future<GoogleCastDevice?> pickCastDevice(BuildContext context) async {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Text(tr('cast'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            child: Text(tr('cast_tv'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           ),
           Expanded(
             child: StreamBuilder<List<GoogleCastDevice>>(

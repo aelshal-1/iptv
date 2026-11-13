@@ -84,7 +84,7 @@ class L10n extends ChangeNotifier {
     'cancel': ['Cancel', 'إلغاء'],
     'remove_continue': ['Remove from continue watching', 'إزالة من تابع المشاهدة'],
     'removed': ['Removed', 'تمت الإزالة'],
-    'cast': ['Cast to TV', 'عرض على التلفزيون'],
+    'cast_tv': ['Cast to TV', 'عرض على التلفزيون'],
     'airplay': ['AirPlay', 'AirPlay'],
     'cast_searching': ['Looking for Chromecast devices on your Wi-Fi', 'بندور على أجهزة Chromecast على الواي فاي'],
     'cast_none': ['No Chromecast found. Make sure the phone and TV are on the same Wi-Fi.', 'مفيش Chromecast. اتأكد إن الموبايل والتلفزيون على نفس الواي فاي.'],
