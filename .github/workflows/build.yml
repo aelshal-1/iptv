@@ -52,6 +52,8 @@ jobs:
           cache: true
       - name: Generate platform folders
         run: |
+          # flutter_chrome_cast's Swift package declares iOS 15 but GoogleCast needs 16: use CocoaPods.
+          flutter config --no-enable-swift-package-manager
           flutter create --platforms=android,ios --org com.aelshal --project-name iptv_player .
           python3 tool/patch_platforms.py .
       - run: flutter pub get

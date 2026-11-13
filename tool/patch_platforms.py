@@ -27,6 +27,15 @@ if m.exists():
     m.write_text(s)
     print('patched', m)
 
+# Some plugins (permission_handler via flutter_chrome_cast) need a newer compile SDK.
+for g in (root / 'android/app/build.gradle.kts', root / 'android/app/build.gradle'):
+    if g.exists():
+        t = g.read_text()
+        t = re.sub(r'compileSdk\s*=\s*flutter\.compileSdkVersion', 'compileSdk = 37', t)
+        t = re.sub(r'compileSdkVersion\s+flutter\.compileSdkVersion', 'compileSdkVersion 37', t)
+        g.write_text(t)
+        print('patched', g)
+
 # MainActivity with Picture in Picture (replaces the generated one)
 src = pathlib.Path(__file__).parent / 'android' / 'MainActivity.kt'
 for ma in list((root / 'android/app/src/main').rglob('MainActivity.*')):
