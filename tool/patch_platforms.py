@@ -25,6 +25,8 @@ if p.exists():
     if 'NSAppTransportSecurity' not in s:
         extra += ('\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n'
                   '\t\t<key>NSAllowsArbitraryLoadsForMedia</key>\n\t\t<true/>\n\t</dict>\n')
+    if 'ITSAppUsesNonExemptEncryption' not in s:
+        extra += '\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>\n'
     if 'UIBackgroundModes' not in s:
         extra += '\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>audio</string>\n\t</array>\n'
     i = s.rfind('</dict>')
