@@ -28,14 +28,12 @@ ThemeData buildTheme() {
       onSurface: C.text,
     ),
   );
-  TextTheme text;
+  String? family;
   try {
-    text = GoogleFonts.readexProTextTheme(base.textTheme);
-  } catch (_) {
-    text = base.textTheme;
-  }
+    family = GoogleFonts.readexPro().fontFamily;
+  } catch (_) {}
   return base.copyWith(
-    textTheme: text.apply(bodyColor: C.text, displayColor: C.text),
+    textTheme: base.textTheme.apply(fontFamily: family, bodyColor: C.text, displayColor: C.text),
     appBarTheme: const AppBarTheme(backgroundColor: C.bg, elevation: 0, scrolledUnderElevation: 0, foregroundColor: C.text),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: const Color(0xFF0B0C10),
