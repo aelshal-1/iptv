@@ -62,14 +62,14 @@ if p.exists():
 pod = root / 'ios/Podfile'
 if pod.exists():
     s = pod.read_text()
-    s = re.sub(r"^#?\s*platform :ios, '[\d.]+'", "platform :ios, '15.0'", s, flags=re.M)
+    s = re.sub(r"^#?\s*platform :ios, '[\d.]+'", "platform :ios, '16.0'", s, flags=re.M)
     pod.write_text(s)
     print('patched', pod)
 
 pbx = root / 'ios/Runner.xcodeproj/project.pbxproj'
 if pbx.exists():
     s = pbx.read_text()
-    s = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET = [\d.]+;', 'IPHONEOS_DEPLOYMENT_TARGET = 15.0;', s)
+    s = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET = [\d.]+;', 'IPHONEOS_DEPLOYMENT_TARGET = 16.0;', s)
     pbx.write_text(s)
     print('patched', pbx)
 
