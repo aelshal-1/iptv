@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:screen_brightness/screen_brightness.dart';
+import 'package:volume_controller/volume_controller.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../api.dart';
@@ -108,6 +110,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   bool _pipSupported = false, _inPip = false;
 
+  // lock + swipe gestures (left half brightness, right half volume)
+  bool _locked = false, _lockHint = false;
+  Timer? _lockTimer;
+  double _bright = 0.5, _vol = 0.5;
+  String? _gesture; // 'bright' | 'vol'
+  Timer? _gestureTimer;
+
   PlayItem get _cur => _items[_i];
   bool get _hasNext => !_cur.isLive && _i < _items.length - 1;
 
@@ -132,6 +141,99 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _play(widget.startMs);
     _maybeLoadSeries();
     _armHide();
+    _initLevels();
+  }
+
+  Future<void> _initLevels() async {
+    try {
+      _bright = await ScreenBrightness.instance.application;
+    } catch (_) {}
+    try {
+      VolumeController.instance.showSystemUI = false;
+      _vol = await VolumeController.instance.getVolume();
+    } catch (_) {}
+  }
+
+  /* ---------------- lock ---------------- */
+  void _lock() {
+    _hideTimer?.cancel();
+    setState(() {
+      _locked = true;
+      _controls = false;
+    });
+    _flashLockHint();
+  }
+
+  void _unlock() {
+    _lockTimer?.cancel();
+    setState(() {
+      _locked = false;
+      _lockHint = false;
+      _controls = true;
+    });
+    _armHide();
+  }
+
+  void _flashLockHint() {
+    _lockTimer?.cancel();
+    setState(() => _lockHint = true);
+    _lockTimer = Timer(const Duration(seconds: 3), () => _set(() => _lockHint = false));
+  }
+
+  /* ---------------- brightness / volume swipe ---------------- */
+  void _dragStart(DragStartDetails d) {
+    if (_locked || _inPip) return;
+    final w = MediaQuery.of(context).size.width;
+    _gestureTimer?.cancel();
+    setState(() => _gesture = d.localPosition.dx < w / 2 ? 'bright' : 'vol');
+  }
+
+  void _dragUpdate(DragUpdateDetails d) {
+    final g = _gesture;
+    if (g == null) return;
+    final h = MediaQuery.of(context).size.height;
+    final delta = -d.delta.dy / (h * 0.8);
+    if (g == 'bright') {
+      final v = (_bright + delta).clamp(0.0, 1.0).toDouble();
+      setState(() => _bright = v);
+      ScreenBrightness.instance.setApplicationScreenBrightness(v).catchError((_) {});
+    } else {
+      final v = (_vol + delta).clamp(0.0, 1.0).toDouble();
+      setState(() => _vol = v);
+      VolumeController.instance.setVolume(v).catchError((_) {});
+    }
+  }
+
+  void _dragEnd([DragEndDetails? _]) {
+    _gestureTimer?.cancel();
+    _gestureTimer = Timer(const Duration(milliseconds: 700), () => _set(() => _gesture = null));
+  }
+
+  Widget _levelIndicator() {
+    final bright = _gesture == 'bright';
+    final v = bright ? _bright : _vol;
+    final icon = bright
+        ? (v < 0.3 ? Icons.brightness_low_rounded : (v < 0.7 ? Icons.brightness_medium_rounded : Icons.brightness_high_rounded))
+        : (v == 0 ? Icons.volume_off_rounded : (v < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded));
+    return Center(
+      child: Container(
+        width: 170,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(18)),
+        child: Row(children: [
+          Icon(icon, color: Colors.white, size: 26),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(value: v, minHeight: 6, backgroundColor: Colors.white24, color: C.gold),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(width: 32, child: Text('${(v * 100).round()}', textAlign: TextAlign.end, style: const TextStyle(fontSize: 13))),
+        ]),
+      ),
+    );
   }
 
   void _set(VoidCallback fn) {
@@ -297,6 +399,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   void _toggleControls() {
     if (_inPip) return;
+    if (_locked) {
+      _flashLockHint();
+      return;
+    }
     setState(() => _controls = !_controls);
     if (_controls) _armHide();
   }
@@ -326,6 +432,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       AndroidPip.onStopped = null;
     }
     _engine?.dispose();
+    _lockTimer?.cancel();
+    _gestureTimer?.cancel();
+    ScreenBrightness.instance.resetApplicationScreenBrightness().catchError((_) {});
+    try {
+      VolumeController.instance.showSystemUI = true;
+    } catch (_) {}
     WakelockPlus.disable();
     SystemChrome.setPreferredOrientations([]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -442,18 +554,27 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     }
     final durMs = _dur.inMilliseconds.toDouble();
     final posMs = (_dragMs ?? _pos.inMilliseconds.toDouble()).clamp(0.0, durMs > 0 ? durMs : 0.0).toDouble();
-    return Scaffold(
+    return PopScope(
+      canPop: !_locked,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _locked) _flashLockHint();
+      },
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _toggleControls,
-        onDoubleTapDown: c.isLive
+        onVerticalDragStart: _dragStart,
+        onVerticalDragUpdate: _dragUpdate,
+        onVerticalDragEnd: _dragEnd,
+        onVerticalDragCancel: _dragEnd,
+        onDoubleTapDown: c.isLive || _locked
             ? null
             : (d) {
                 final w = MediaQuery.of(context).size.width;
                 _seekBy(d.localPosition.dx < w / 2 ? -10 : 10);
               },
-        onDoubleTap: c.isLive ? null : () {},
+        onDoubleTap: c.isLive || _locked ? null : () {},
         child: Stack(fit: StackFit.expand, children: [
           video,
           if (_buffering && _error == null && !_inPip) const Center(child: CircularProgressIndicator(color: C.gold)),
@@ -470,14 +591,48 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
               ),
             ),
           IgnorePointer(
-            ignoring: !_controls,
+            ignoring: !_controls || _locked,
             child: AnimatedOpacity(
-              opacity: _controls ? 1 : 0,
+              opacity: _controls && !_locked ? 1 : 0,
               duration: const Duration(milliseconds: 200),
               child: _overlay(c, posMs, durMs),
             ),
           ),
+          if (_gesture != null) IgnorePointer(child: _levelIndicator()),
+          if (_locked)
+            IgnorePointer(
+              ignoring: !_lockHint,
+              child: AnimatedOpacity(
+                opacity: _lockHint ? 1 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: SafeArea(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 18),
+                      child: Material(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        shape: const StadiumBorder(),
+                        child: InkWell(
+                          customBorder: const StadiumBorder(),
+                          onTap: _unlock,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              const Icon(Icons.lock_rounded, color: C.gold, size: 20),
+                              const SizedBox(width: 8),
+                              Text(tr('unlock'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ]),
+      ),
       ),
     );
   }
@@ -527,6 +682,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
               if (c.isLive && _items.length > 1) IconButton(tooltip: tr('channel_list'), icon: const Icon(Icons.list_rounded), onPressed: _channelSheet),
               if (_pipSupported) IconButton(tooltip: tr('pip'), icon: const Icon(Icons.picture_in_picture_alt_rounded), onPressed: _startPip),
               IconButton(tooltip: tr('subs_audio'), icon: const Icon(Icons.subtitles_outlined), onPressed: _tracksSheet),
+              IconButton(tooltip: tr('lock'), icon: const Icon(Icons.lock_open_rounded), onPressed: _lock),
             ]),
             const Spacer(),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
