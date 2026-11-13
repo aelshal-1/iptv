@@ -3,7 +3,7 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
-android/
-ios/
-test/
+/android/
+/ios/
+/test/
 pubspec.lock
