@@ -28,6 +28,7 @@ abstract class Engine {
   void Function()? onTracks;
   void Function(int w, int h)? onSize;
   void Function(bool active)? onPip;
+  void Function(bool active)? onExternal;
 
   bool get isNative;
   Widget view();
@@ -201,6 +202,9 @@ class AvEngine extends Engine {
           break;
         case 'pip':
           onPip?.call(ev['active'] == true);
+          break;
+        case 'external':
+          onExternal?.call(ev['active'] == true);
           break;
       }
     });

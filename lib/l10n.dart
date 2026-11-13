@@ -91,6 +91,8 @@ class L10n extends ChangeNotifier {
     'casting_to': ['Playing on', 'بيعرض على'],
     'stop_casting': ['Stop casting', 'إيقاف العرض'],
     'cast_failed': ['Could not play on the TV', 'مقدرناش نشغل على التلفزيون'],
+    'airplay_on': ['Playing on your TV', 'بيعرض على التلفزيون'],
+    'airplay_hint': ['Use these controls to pause or seek.', 'استخدم الأزرار هنا للإيقاف أو التقديم.'],
     'all_channels': ['All channels', 'كل القنوات'],
     'continue_watching': ['Continue watching', 'تابع المشاهدة'],
     'fav_channels': ['Favorite channels', 'قنواتك المفضلة'],

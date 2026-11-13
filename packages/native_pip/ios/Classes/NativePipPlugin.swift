@@ -57,6 +57,9 @@ public class NativePipPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, AVP
   private var pip: AVPictureInPictureController?
   private weak var host: PlayerHostView?
   private var pendingStartMs: Double = 0
+  private var currentURL: URL?
+  private var externalObs: NSKeyValueObservation?
+  private var handingOff = false
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let inst = NativePipPlugin()
@@ -73,6 +76,9 @@ public class NativePipPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, AVP
     player.appliesMediaSelectionCriteriaAutomatically = false
     player.allowsExternalPlayback = true
     player.usesExternalPlaybackWhileExternalScreenIsActive = true
+    externalObs = player.observe(\.isExternalPlaybackActive, options: [.new]) { [weak self] p, _ in
+      DispatchQueue.main.async { self?.externalChanged(p.isExternalPlaybackActive) }
+    }
     timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
       self?.tick()
     }
@@ -141,6 +147,22 @@ public class NativePipPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, AVP
     ])
   }
 
+  /// AirPlay switched on/off. Many IPTV accounts allow one connection, so close the phone's
+  /// stream first and reopen it after a short pause; the TV (or the phone) then fetches it alone.
+  private func externalChanged(_ active: Bool) {
+    send(["type": "external", "active": active])
+    guard !handingOff, let url = currentURL, player.currentItem != nil else { return }
+    handingOff = true
+    let pos = ms(player.currentTime())
+    player.pause()
+    clearItem()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+      guard let self = self else { return }
+      self.handingOff = false
+      self.open(url, startMs: pos)
+    }
+  }
+
   // MARK: methods
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -167,6 +189,7 @@ public class NativePipPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, AVP
     case "dispose":
       pip?.stopPictureInPicture()
       player.pause()
+      currentURL = nil
       clearItem()
       result(nil)
     default: result(FlutterMethodNotImplemented)
@@ -185,6 +208,7 @@ public class NativePipPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, AVP
     try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
     try? AVAudioSession.sharedInstance().setActive(true)
     clearItem()
+    currentURL = url
     pendingStartMs = startMs
     let item = AVPlayerItem(url: url)
     statusObs = item.observe(\.status, options: [.new]) { [weak self] it, _ in

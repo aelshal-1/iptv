@@ -111,6 +111,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   DateTime _lastSave = DateTime.fromMillisecondsSinceEpoch(0);
 
   bool _pipSupported = false, _inPip = false;
+  bool _airplay = false;
 
   // Chromecast
   String? _castDevice; // set while this screen is casting
@@ -359,6 +360,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       if (Platform.isAndroid && _pipSupported) AndroidPip.setAuto(true, w: w, h: h);
     };
     n.onPip = (v) => _set(() => _inPip = v);
+    n.onExternal = (v) => _set(() => _airplay = v);
     _engine = n;
     if (Platform.isIOS) {
       final ok = native && await n.pipSupported();
@@ -698,6 +700,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         onDoubleTap: c.isLive || _locked ? null : () {},
         child: Stack(fit: StackFit.expand, children: [
           video,
+          if (_airplay)
+            Container(
+              color: Colors.black,
+              alignment: Alignment.center,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.airplay_rounded, size: 60, color: C.gold),
+                const SizedBox(height: 12),
+                Text(tr('airplay_on'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(tr('airplay_hint'), textAlign: TextAlign.center, style: const TextStyle(color: C.dim)),
+              ]),
+            ),
           if (_buffering && _error == null && !_inPip) const Center(child: CircularProgressIndicator(color: C.gold)),
           if (_error != null)
             Center(
