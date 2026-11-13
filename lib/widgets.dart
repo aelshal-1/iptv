@@ -306,12 +306,21 @@ class DownloadButton extends StatelessWidget {
                 : active
                     ? '${tr(paused ? 'paused' : 'downloading')} ${(p * 100).floor()}%'
                     : tr('download');
-        return OutlinedButton.icon(
+        final err = failed ? d.errorOf(k) : null;
+        final btn = OutlinedButton.icon(
           onPressed: () => _tap(context),
           icon: Icon(done ? Icons.download_done_rounded : failed ? Icons.error_outline : active ? (paused ? Icons.pause_circle_outline : Icons.downloading_rounded) : Icons.download_rounded,
               color: done ? C.gold : failed ? C.red : null),
           label: Text(label),
         );
+        if (err == null || err.isEmpty) return btn;
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          btn,
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 8),
+            child: Text(err, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: C.red, fontSize: 12)),
+          ),
+        ]);
       },
     );
   }

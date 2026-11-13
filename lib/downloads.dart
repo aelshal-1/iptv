@@ -108,7 +108,7 @@ class Downloads {
       group: _group,
       updates: Updates.statusAndProgress,
       allowPause: true,
-      retries: 3,
+      retries: 5,
       displayName: sub == null ? name : '$name · $sub',
     );
     final l = all()..removeWhere((d) => d['key'] == key);
@@ -179,6 +179,16 @@ class Downloads {
     _saveAll(all()..removeWhere((e) => e['key'] == key));
   }
 
+  String? errorOf(String key) => meta(key)?['error'] as String?;
+
+  void _setError(String tid, String? msg) {
+    final l = all();
+    for (final d in l) {
+      if (d['tid'] == tid) d['error'] = msg;
+    }
+    _saveAll(l);
+  }
+
   int totalBytes() => all().fold<int>(0, (s, d) => s + ((d['size'] as num?)?.toInt() ?? 0));
 
   void _markDone(String tid) {
@@ -202,6 +212,18 @@ class Downloads {
     if (u.task is DownloadTask) _tasks[tid] = u.task as DownloadTask;
     if (u is TaskStatusUpdate) {
       _status[tid] = u.status;
+      if (u.status == TaskStatus.failed || u.status == TaskStatus.notFound) {
+        final ex = u.exception;
+        final code = u.responseStatusCode ?? (ex is TaskHttpException ? ex.httpResponseCode : null);
+        final msg = [
+          if (code != null && code > 0) 'HTTP $code',
+          if (u.status == TaskStatus.notFound) 'not found',
+          if (ex != null && ex.description.isNotEmpty) ex.description,
+        ].join(' · ');
+        _setError(tid, msg.isEmpty ? 'failed' : msg);
+      } else if (u.status == TaskStatus.running || u.status == TaskStatus.enqueued) {
+        _setError(tid, null);
+      }
       if (u.status == TaskStatus.complete) {
         _progress[tid] = 1;
         _markDone(tid);

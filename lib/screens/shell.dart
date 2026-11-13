@@ -755,7 +755,7 @@ class _DownloadTile extends StatelessWidget {
     final status = done
         ? '${tr('dl_done')} · ${mb((d['size'] as num?)?.toInt() ?? 0)}'
         : dl.isFailed(it.key)
-            ? tr('retry_dl')
+            ? '${tr('retry_dl')}${dl.errorOf(it.key) != null ? ' · ${dl.errorOf(it.key)}' : ''}'
             : '${tr(dl.isPaused(it.key) ? 'paused' : 'downloading')} ${(p * 100).floor()}%';
     return InkWell(
       onTap: done
