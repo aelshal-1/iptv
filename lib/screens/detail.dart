@@ -352,7 +352,7 @@ class _SeriesDetailState extends State<SeriesDetail> {
               FilledButton.icon(
                 onPressed: () => PlayerScreen.resumeRecent(context, resume!),
                 icon: const Icon(Icons.play_arrow_rounded),
-                label: Text('${tr('resume')} · ${resume['sub'] ?? ''}'),
+                label: Text('${tr(resume['upNext'] == true ? 'play' : 'resume')} · ${resume['sub'] ?? ''}'),
               )
             else if (items.isNotEmpty)
               FilledButton.icon(
@@ -402,7 +402,8 @@ class _EpisodeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final info = (ep['info'] as Map?) ?? {};
     final prog = Store.progressOf(item.key);
-    final frac = prog == null ? null : ((prog['pos'] as num) / (prog['dur'] as num)).toDouble();
+    final pd = (prog?['dur'] as num?) ?? 0;
+    final frac = prog == null || pd <= 0 ? null : ((prog['pos'] as num) / pd).toDouble();
     final plot = '${info['plot'] ?? ''}'.trim();
     return InkWell(
       onTap: onTap,
@@ -419,6 +420,12 @@ class _EpisodeTile extends StatelessWidget {
                 const Center(child: Icon(Icons.play_circle_outline_rounded, color: Colors.white70, size: 30)),
                 if (frac != null)
                   Align(alignment: Alignment.bottomCenter, child: LinearProgressIndicator(value: frac, minHeight: 3, backgroundColor: Colors.black54, color: C.gold)),
+                if (Store.isWatched(item.key))
+                  const PositionedDirectional(
+                    top: 6,
+                    end: 6,
+                    child: CircleAvatar(radius: 11, backgroundColor: C.gold, child: Icon(Icons.check_rounded, size: 15, color: C.onGold)),
+                  ),
               ]),
             ),
           ),

@@ -63,11 +63,34 @@ class Store {
   /* ---- continue watching: [{key, type, id, name, sub, icon, ext, pos, dur, seriesId, season, cover}] ---- */
   static List<Map<String, dynamic>> recent() => ((get('recent') as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
+  /// Saves where playback stopped. One entry per movie, one per series (its latest episode).
+  /// Finished items are marked watched and leave the list; `upNext: true` keeps an unstarted next episode.
   static void saveProgress(Map<String, dynamic> r) {
-    final list = recent()..removeWhere((e) => e['key'] == r['key']);
+    final sid = r['seriesId'];
+    final list = recent()..removeWhere((e) => e['key'] == r['key'] || (sid != null && e['seriesId'] != null && '${e['seriesId']}' == '$sid'));
     final pos = (r['pos'] as num?)?.toInt() ?? 0, dur = (r['dur'] as num?)?.toInt() ?? 0;
-    if (dur > 0 && pos > 30000 && pos < dur - 120000) list.insert(0, r);
-    set('recent', list.take(20).toList());
+    final finished = dur > 0 && pos >= dur - 120000;
+    if (finished) markWatched('${r['key']}');
+    r['at'] = DateTime.now().millisecondsSinceEpoch;
+    if (r['upNext'] == true || (dur > 0 && pos > 15000 && !finished)) list.insert(0, r);
+    set('recent', list.take(30).toList());
+  }
+
+  /* ---- watched (finished) movies and episodes ---- */
+  static Set<String> watched() => strList('watched').toSet();
+  static bool isWatched(String key) => watched().contains(key);
+  static void markWatched(String key) {
+    final l = strList('watched')..remove(key);
+    l.insert(0, key);
+    set('watched', l.take(3000).toList());
+  }
+
+  /* ---- recently watched live channels ---- */
+  static List<Map<String, dynamic>> recentLive() => ((get('recentLive') as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  static void addRecentLive(Map<String, dynamic> ch) {
+    final l = recentLive()..removeWhere((e) => '${e['id']}' == '${ch['id']}');
+    l.insert(0, ch);
+    set('recentLive', l.take(20).toList());
   }
 
   static Map<String, dynamic>? progressOf(String key) {

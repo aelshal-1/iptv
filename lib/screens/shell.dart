@@ -65,7 +65,19 @@ class HomeTab extends StatelessWidget {
       valueListenable: Store.tick,
       builder: (context, _, __) {
         final recent = Store.recent();
-        final favCh = Store.favs().where((f) => f['type'] == 'live').toList();
+        final favs = Store.favs();
+        final favCh = favs.where((f) => f['type'] == 'live').toList();
+        final favPosters = favs
+            .where((f) => f['type'] == 'vod' || f['type'] == 'series')
+            .map((f) => <String, dynamic>{
+                  ...f,
+                  if (f['type'] == 'vod') 'stream_id': f['id'] else 'series_id': f['id'],
+                  'stream_icon': f['icon'],
+                  'cover': f['icon'],
+                  'container_extension': f['ext'],
+                })
+            .toList();
+        final recentLive = Store.recentLive();
         final movies = _latest('vod', 'added');
         final series = _latest('series', 'last_modified');
         final hero = movies.isNotEmpty ? movies.first : null;
@@ -86,7 +98,6 @@ class HomeTab extends StatelessWidget {
                 const LangButton(),
               ]),
             ),
-            if (hero != null) _Hero(item: hero),
             if (recent.isNotEmpty) ...[
               SectionTitle(tr('continue_watching')),
               SizedBox(
@@ -122,7 +133,10 @@ class HomeTab extends StatelessWidget {
                           const SizedBox(height: 6),
                           Text('${r['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
                           Text(
-                            [if ((r['sub'] ?? '') != '') r['sub'], '${(((r['dur'] as num) - (r['pos'] as num)) / 60000).ceil()} ${tr('min_left')}'].join(' · '),
+                            [
+                              if ((r['sub'] ?? '') != '') r['sub'],
+                              r['upNext'] == true ? tr('up_next') : '${((((r['dur'] as num?) ?? 0) - ((r['pos'] as num?) ?? 0)) / 60000).ceil()} ${tr('min_left')}',
+                            ].join(' · '),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 11.5, color: C.dimmer),
@@ -134,39 +148,38 @@ class HomeTab extends StatelessWidget {
                 ),
               ),
             ],
-            if (favCh.isNotEmpty) ...[
-              SectionTitle(tr('fav_channels')),
+            if (hero != null) _Hero(item: hero),
+            if (favPosters.isNotEmpty) ...[
+              SectionTitle(tr('favorites'),
+                  trailing: TextButton(
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoritesScreen())),
+                    child: Text(tr('all')),
+                  )),
               SizedBox(
-                height: 92,
+                height: 210,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: favCh.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemCount: favPosters.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
                   itemBuilder: (_, i) {
-                    final f = favCh[i];
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () => openItem(context, 'live', {...f, 'stream_id': f['id']},
-                          channelList: favCh.map((e) => <String, dynamic>{...e, 'stream_id': e['id'], 'stream_icon': e['icon']}).toList()),
-                      child: SizedBox(
-                        width: 110,
-                        child: Column(children: [
-                          Expanded(
-                            child: Glass(
-                              padding: const EdgeInsets.all(8),
-                              radius: 14,
-                              child: SizedBox.expand(child: NetImg('${f['icon'] ?? ''}', label: '${f['name']}', fit: BoxFit.contain)),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text('${f['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                        ]),
-                      ),
+                    final f = favPosters[i];
+                    final kind = '${f['type']}';
+                    return SizedBox(
+                      width: 118,
+                      child: Poster(item: f, sub: tr(kind == 'vod' ? 'movies' : 'series'), onTap: () => openItem(context, kind, f)),
                     );
                   },
                 ),
               ),
+            ],
+            if (favCh.isNotEmpty) ...[
+              SectionTitle(tr('fav_channels')),
+              _ChannelRow(channels: favCh),
+            ],
+            if (recentLive.isNotEmpty) ...[
+              SectionTitle(tr('recent_channels')),
+              _ChannelRow(channels: recentLive),
             ],
             if (movies.isNotEmpty) ...[
               SectionTitle('${tr('latest')} · ${tr('movies')}'),
@@ -179,6 +192,46 @@ class HomeTab extends StatelessWidget {
           ]),
         );
       },
+    );
+  }
+}
+
+/// Horizontal row of channel logos (favorites, recently watched).
+class _ChannelRow extends StatelessWidget {
+  final List<Map<String, dynamic>> channels;
+  const _ChannelRow({required this.channels});
+  @override
+  Widget build(BuildContext context) {
+    final list = channels.map((e) => <String, dynamic>{...e, 'stream_id': e['id'], 'stream_icon': e['icon']}).toList();
+    return SizedBox(
+      height: 92,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: list.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (_, i) {
+          final f = list[i];
+          return InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => openItem(context, 'live', f, channelList: list),
+            child: SizedBox(
+              width: 110,
+              child: Column(children: [
+                Expanded(
+                  child: Glass(
+                    padding: const EdgeInsets.all(8),
+                    radius: 14,
+                    child: SizedBox.expand(child: NetImg('${f['icon'] ?? ''}', label: '${f['name']}', fit: BoxFit.contain)),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text('${f['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+              ]),
+            ),
+          );
+        },
+      ),
     );
   }
 }

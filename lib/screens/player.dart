@@ -257,7 +257,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         _pos = pos;
         _dur = dur;
       });
-      if (DateTime.now().difference(_lastSave).inSeconds >= 10) _save();
+      if (DateTime.now().difference(_lastSave).inSeconds >= 5) _save();
     };
     n.onTracks = _applyTrackPrefs;
     n.onCompleted = () {
@@ -298,7 +298,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     final e = await _engineFor(it);
     if (!mounted) return;
     await e.open(e.isNative ? it.nativeUrl! : it.url, startMs: (startMs != null && startMs > 0) ? startMs : null);
-    if (it.isLive) _loadEpg();
+    if (it.isLive) {
+      Store.addRecentLive({'id': it.id, 'name': it.title, 'icon': it.icon, 'num': it.sub});
+      _loadEpg();
+    }
   }
 
   Future<void> _loadEpg() async {
@@ -365,6 +368,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _lastSave = DateTime.now();
     final c = _cur;
     if (c.isLive || _dur.inMilliseconds <= 0) return;
+    final pos = _pos.inMilliseconds, dur = _dur.inMilliseconds;
     Store.saveProgress({
       'key': c.key,
       'type': c.type,
@@ -373,11 +377,35 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       'sub': c.sub,
       'icon': c.icon,
       'ext': c.ext,
-      'pos': _pos.inMilliseconds,
-      'dur': _dur.inMilliseconds,
+      'pos': pos,
+      'dur': dur,
       'seriesId': c.seriesId,
       'season': c.season,
     });
+    // Finished an episode: "continue watching" now points at the next one.
+    if (pos >= dur - 120000 && _hasNext) {
+      final n = _items[_i + 1];
+      Store.saveProgress({
+        'key': n.key,
+        'type': n.type,
+        'id': n.id,
+        'name': n.title,
+        'sub': n.sub,
+        'icon': n.icon,
+        'ext': n.ext,
+        'pos': 0,
+        'dur': 0,
+        'seriesId': n.seriesId,
+        'season': n.season,
+        'upNext': true,
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Keep the exact minute even if the app is closed from the background.
+    if (state != AppLifecycleState.resumed) _save();
   }
 
   void _go(int i) {
