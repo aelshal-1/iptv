@@ -21,24 +21,48 @@ Future<void> main() async {
   runApp(IptvApp(first: first));
 }
 
-class IptvApp extends StatelessWidget {
+class IptvApp extends StatefulWidget {
   final Widget first;
   const IptvApp({super.key, required this.first});
+  @override
+  State<IptvApp> createState() => _IptvAppState();
+}
+
+class _IptvAppState extends State<IptvApp> {
+  @override
+  void initState() {
+    super.initState();
+    L10n.i.addListener(_onLang);
+  }
+
+  @override
+  void dispose() {
+    L10n.i.removeListener(_onLang);
+    super.dispose();
+  }
+
+  /// Language changed: rebuild every screen (texts come from tr()) without losing navigation.
+  void _onLang() {
+    setState(() {});
+    void rebuild(Element e) {
+      e.markNeedsBuild();
+      e.visitChildren(rebuild);
+    }
+
+    (context as Element).visitChildren(rebuild);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: L10n.i,
-      builder: (context, _) => MaterialApp(
-        title: 'IPTV Player',
-        debugShowCheckedModeBanner: false,
-        theme: buildTheme(),
-        builder: (context, child) => Directionality(
-          textDirection: L10n.i.ar ? TextDirection.rtl : TextDirection.ltr,
-          child: child!,
-        ),
-        home: first,
+    return MaterialApp(
+      title: 'IPTV Player',
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(),
+      builder: (context, child) => Directionality(
+        textDirection: L10n.i.ar ? TextDirection.rtl : TextDirection.ltr,
+        child: child!,
       ),
+      home: widget.first,
     );
   }
 }
