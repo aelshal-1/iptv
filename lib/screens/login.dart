@@ -64,12 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Align(alignment: AlignmentDirectional.centerEnd, child: const LangButton()),
                   const SizedBox(height: 12),
                   Row(children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(color: C.gold, borderRadius: BorderRadius.circular(14)),
-                      child: const Icon(Icons.play_arrow_rounded, color: C.onGold, size: 32),
-                    ),
+                    const AppLogo(size: 56),
                     const SizedBox(width: 12),
                     Text(tr('app'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
                   ]),

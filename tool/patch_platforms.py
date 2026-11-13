@@ -13,6 +13,15 @@ if m.exists():
     s = re.sub(r'android:label="[^"]*"', f'android:label="{NAME}"', s, count=1)
     if 'usesCleartextTraffic' not in s:
         s = s.replace('<application', '<application\n        android:usesCleartextTraffic="true"', 1)
+    if 'FOREGROUND_SERVICE_MEDIA_PLAYBACK' not in s:
+        s = s.replace('<application', '<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>\n    <application', 1)
+    if 'OPTIONS_PROVIDER_CLASS_NAME' not in s:
+        cast = ('        <meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"\n'
+                '            android:value="com.felnanuke.google_cast.GoogleCastOptionsProvider" />\n'
+                '        <service android:name="com.google.android.gms.cast.framework.media.MediaNotificationService"\n'
+                '            android:exported="false" android:foregroundServiceType="mediaPlayback" />\n')
+        i = s.rfind('</application>')
+        s = s[:i] + cast + '    ' + s[i:]
     if 'supportsPictureInPicture' not in s:
         s = s.replace('android:name=".MainActivity"', 'android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:resizeableActivity="true"', 1)
     m.write_text(s)
@@ -40,6 +49,9 @@ if p.exists():
                   '\t\t<key>NSAllowsArbitraryLoadsForMedia</key>\n\t\t<true/>\n\t</dict>\n')
     if 'ITSAppUsesNonExemptEncryption' not in s:
         extra += '\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>\n'
+    if 'NSLocalNetworkUsageDescription' not in s:
+        extra += ('\t<key>NSLocalNetworkUsageDescription</key>\n\t<string>Finds Chromecast devices on your Wi-Fi so you can play on your TV.</string>\n'
+                  '\t<key>NSBonjourServices</key>\n\t<array>\n\t\t<string>_CC1AD845._googlecast._tcp</string>\n\t\t<string>_googlecast._tcp</string>\n\t</array>\n')
     if 'UIBackgroundModes' not in s:
         extra += '\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>audio</string>\n\t</array>\n'
     i = s.rfind('</dict>')
@@ -50,14 +62,14 @@ if p.exists():
 pod = root / 'ios/Podfile'
 if pod.exists():
     s = pod.read_text()
-    s = re.sub(r"^#?\s*platform :ios, '[\d.]+'", "platform :ios, '13.0'", s, flags=re.M)
+    s = re.sub(r"^#?\s*platform :ios, '[\d.]+'", "platform :ios, '15.0'", s, flags=re.M)
     pod.write_text(s)
     print('patched', pod)
 
 pbx = root / 'ios/Runner.xcodeproj/project.pbxproj'
 if pbx.exists():
     s = pbx.read_text()
-    s = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET = [\d.]+;', 'IPHONEOS_DEPLOYMENT_TARGET = 13.0;', s)
+    s = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET = [\d.]+;', 'IPHONEOS_DEPLOYMENT_TARGET = 15.0;', s)
     pbx.write_text(s)
     print('patched', pbx)
 

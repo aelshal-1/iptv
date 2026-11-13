@@ -104,3 +104,11 @@ class NetImg extends StatelessWidget {
     return Image.network(url!, fit: fit, errorBuilder: (_, __, ___) => ph, loadingBuilder: (c, w, p) => p == null ? w : ph);
   }
 }
+
+/// The app mark: gold keyhole arch with a play symbol.
+class AppLogo extends StatelessWidget {
+  final double size;
+  const AppLogo({super.key, this.size = 40});
+  @override
+  Widget build(BuildContext context) => Image.asset('assets/logo.png', width: size, height: size, filterQuality: FilterQuality.medium);
+}

@@ -19,6 +19,7 @@ dependencies:
   wakelock_plus: any
   volume_controller: any
   screen_brightness: any
+  flutter_chrome_cast: any
   native_pip:
     path: packages/native_pip
 
@@ -30,6 +31,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo.png
 
 flutter_launcher_icons:
   android: true

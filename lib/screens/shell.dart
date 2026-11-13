@@ -87,12 +87,7 @@ class HomeTab extends StatelessWidget {
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(16, 12, 8, 0),
               child: Row(children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(color: C.gold, borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.play_arrow_rounded, color: C.onGold),
-                ),
+                const AppLogo(size: 38),
                 const SizedBox(width: 10),
                 Expanded(child: Text(tr('app'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600))),
                 const LangButton(),
@@ -115,6 +110,7 @@ class HomeTab extends StatelessWidget {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(14),
                         onTap: () => PlayerScreen.resumeRecent(context, r),
+                        onLongPress: () => _removeRecent(context, r),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Expanded(
                             child: ClipRRect(
@@ -231,6 +227,130 @@ class _ChannelRow extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+void _removeRecent(BuildContext context, Map<String, dynamic> r) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: C.surface,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(
+          title: Text('${r['name']}', maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: (r['sub'] ?? '') != '' ? Text('${r['sub']}', style: const TextStyle(color: C.dimmer)) : null,
+        ),
+        ListTile(
+          leading: const Icon(Icons.remove_circle_outline, color: C.red),
+          title: Text(tr('remove_continue'), style: const TextStyle(color: C.red)),
+          onTap: () {
+            Store.set('recent', Store.recent().where((e) => e['key'] != r['key']).toList());
+            Navigator.pop(ctx);
+            toast(context, tr('removed'));
+          },
+        ),
+      ]),
+    ),
+  );
+}
+
+/// Choose exactly which saved data to clear.
+class ClearDataScreen extends StatefulWidget {
+  const ClearDataScreen({super.key});
+  @override
+  State<ClearDataScreen> createState() => _ClearDataScreenState();
+}
+
+class _ClearDataScreenState extends State<ClearDataScreen> {
+  final Set<String> _sel = {};
+
+  List<(String, String, int)> _items() {
+    final recent = Store.recent();
+    final favs = Store.favs();
+    final prefs = (Store.get('subPref') != null ? 1 : 0) + (Store.get('audioPref') != null ? 1 : 0);
+    return [
+      ('cw_movies', tr('cw_movies'), recent.where((e) => e['type'] == 'vod').length),
+      ('cw_series', tr('cw_series'), recent.where((e) => e['type'] == 'episode').length),
+      ('watched', tr('watched_marks'), Store.watched().length),
+      ('recent_live', tr('recent_channels'), Store.recentLive().length),
+      ('fav_live', tr('fav_channels'), favs.where((f) => f['type'] == 'live').length),
+      ('fav_vod', '${tr('favorites')} · ${tr('movies')}', favs.where((f) => f['type'] == 'vod').length),
+      ('fav_series', '${tr('favorites')} · ${tr('series')}', favs.where((f) => f['type'] == 'series').length),
+      ('track_prefs', tr('track_prefs'), prefs),
+    ];
+  }
+
+  Future<void> _clear() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: C.surface,
+        title: Text(tr('clear_confirm')),
+        content: Text(_items().where((i) => _sel.contains(i.$1)).map((i) => i.$2).join('\n')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('clear'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    var recent = Store.recent();
+    if (_sel.contains('cw_movies')) recent = recent.where((e) => e['type'] != 'vod').toList();
+    if (_sel.contains('cw_series')) recent = recent.where((e) => e['type'] != 'episode').toList();
+    await Store.set('recent', recent);
+    if (_sel.contains('watched')) await Store.set('watched', null);
+    if (_sel.contains('recent_live')) await Store.set('recentLive', null);
+    final drop = {
+      if (_sel.contains('fav_live')) 'live',
+      if (_sel.contains('fav_vod')) 'vod',
+      if (_sel.contains('fav_series')) 'series',
+    };
+    if (drop.isNotEmpty) await Store.set('favs', Store.favs().where((f) => !drop.contains(f['type'])).toList());
+    if (_sel.contains('track_prefs')) {
+      await Store.set('subPref', null);
+      await Store.set('audioPref', null);
+    }
+    if (!mounted) return;
+    setState(_sel.clear);
+    toast(context, tr('cleared'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items();
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('clear_data'))),
+      body: ListView(padding: const EdgeInsets.fromLTRB(8, 4, 8, 24), children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: Text(tr('clear_data_hint'), style: const TextStyle(color: C.dim)),
+        ),
+        for (final i in items)
+          CheckboxListTile(
+            value: _sel.contains(i.$1),
+            onChanged: i.$3 == 0 ? null : (v) => setState(() => v == true ? _sel.add(i.$1) : _sel.remove(i.$1)),
+            title: Text(i.$2, style: TextStyle(color: i.$3 == 0 ? C.dimmer : C.text)),
+            subtitle: Text('${i.$3} ${tr('items')}', style: const TextStyle(color: C.dimmer, fontSize: 12)),
+            activeColor: C.gold,
+            checkColor: C.onGold,
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+      ]),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            height: 52,
+            child: FilledButton(
+              onPressed: _sel.isEmpty ? null : _clear,
+              style: FilledButton.styleFrom(backgroundColor: C.red, foregroundColor: Colors.white),
+              child: Text(_sel.isEmpty ? tr('clear_pick') : '${tr('clear')} (${_sel.length})'),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -458,12 +578,11 @@ class MoreTab extends StatelessWidget {
                   ),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.history),
-                  title: Text(tr('clear_history')),
-                  onTap: () {
-                    Store.set('recent', []);
-                    toast(context, tr('history_cleared'));
-                  },
+                  leading: const Icon(Icons.cleaning_services_outlined),
+                  title: Text(tr('clear_data')),
+                  subtitle: Text(tr('clear_data_sub'), style: const TextStyle(color: C.dimmer)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ClearDataScreen())),
                 ),
                 ListTile(
                   leading: const Icon(Icons.logout, color: C.red),

@@ -3,11 +3,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../api.dart';
+import '../cast.dart';
 import '../engine.dart';
 import '../l10n.dart';
 import '../store.dart';
@@ -110,6 +112,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   bool _pipSupported = false, _inPip = false;
 
+  // Chromecast
+  String? _castDevice; // set while this screen is casting
+  bool _castPlaying = true;
+  StreamSubscription? _castSub;
+
   // lock + swipe gestures (left half brightness, right half volume)
   bool _locked = false, _lockHint = false;
   Timer? _lockTimer;
@@ -153,6 +160,82 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       _vol = await VolumeController.instance.getVolume();
     } catch (_) {}
   }
+
+  /* ---------------- Chromecast ---------------- */
+  Future<void> _startCast() async {
+    final dev = await pickCastDevice(context);
+    if (dev == null || !mounted) return;
+    final c = _cur;
+    final url = c.isLive ? (Api.i.liveHlsUrl(c.id) ?? c.url) : c.url;
+    final at = _pos;
+    // Free the stream first: the account may allow only one connection.
+    final e = _engine;
+    _engine = null;
+    _save();
+    setState(() {
+      _castDevice = dev.friendlyName;
+      _castPlaying = true;
+      _controls = true;
+    });
+    await e?.dispose();
+    bool ok = false;
+    try {
+      ok = await Cast.play(dev, url: url, title: c.title, subtitle: c.sub, image: c.icon, live: c.isLive, start: at);
+    } catch (_) {}
+    if (!mounted) return;
+    if (!ok) {
+      toast2(tr('cast_failed'));
+      _stopCast(resume: true, at: at);
+      return;
+    }
+    _castSub?.cancel();
+    _castSub = GoogleCastRemoteMediaClient.instance.mediaStatusStream.listen((st) {
+      _set(() => _castPlaying = st?.playerState != CastMediaPlayerState.paused);
+    });
+  }
+
+  Future<void> _stopCast({bool resume = true, Duration? at}) async {
+    final pos = at ?? Cast.position;
+    _castSub?.cancel();
+    _castSub = null;
+    await Cast.stop();
+    if (!mounted) return;
+    setState(() => _castDevice = null);
+    if (resume) _play(_cur.isLive ? null : pos.inMilliseconds);
+  }
+
+  void toast2(String m) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(m)));
+
+  Widget _castPanel() => Container(
+        color: Colors.black,
+        alignment: Alignment.center,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.cast_connected_rounded, size: 64, color: C.gold),
+          const SizedBox(height: 14),
+          Text('${tr('casting_to')} $_castDevice', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(_cur.title, style: const TextStyle(color: C.dim)),
+          const SizedBox(height: 22),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            _RoundBtn(
+              icon: _castPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              big: true,
+              onTap: () {
+                Cast.togglePlay();
+                setState(() => _castPlaying = !_castPlaying);
+              },
+            ),
+          ]),
+          const SizedBox(height: 22),
+          OutlinedButton.icon(
+            onPressed: () => _stopCast(),
+            icon: const Icon(Icons.cast),
+            label: Text(tr('stop_casting')),
+          ),
+        ]),
+      );
 
   /* ---------------- lock ---------------- */
   void _lock() {
@@ -462,6 +545,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _engine?.dispose();
     _lockTimer?.cancel();
     _gestureTimer?.cancel();
+    _castSub?.cancel();
     ScreenBrightness.instance.resetApplicationScreenBrightness().catchError((_) {});
     try {
       VolumeController.instance.showSystemUI = true;
@@ -576,6 +660,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     final c = _cur;
     final e = _engine;
     final video = e == null ? const SizedBox.expand() : KeyedSubtree(key: ValueKey(e), child: e.view());
+    if (_castDevice != null) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(children: [
+          Positioned.fill(child: _castPanel()),
+          SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context))),
+        ]),
+      );
+    }
     // Android Picture in Picture: the window shows only the video.
     if (_inPip && Platform.isAndroid) {
       return Scaffold(backgroundColor: Colors.black, body: SizedBox.expand(child: video));
@@ -708,6 +801,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                   },
                 ),
               if (c.isLive && _items.length > 1) IconButton(tooltip: tr('channel_list'), icon: const Icon(Icons.list_rounded), onPressed: _channelSheet),
+              if (Cast.ready) IconButton(tooltip: tr('cast'), icon: const Icon(Icons.cast_rounded), onPressed: _startCast),
+              if (Platform.isIOS && (_engine?.isNative ?? false))
+                const SizedBox(width: 44, height: 44, child: UiKitView(viewType: 'iptv/airplay_button')),
               if (_pipSupported) IconButton(tooltip: tr('pip'), icon: const Icon(Icons.picture_in_picture_alt_rounded), onPressed: _startPip),
               IconButton(tooltip: tr('subs_audio'), icon: const Icon(Icons.subtitles_outlined), onPressed: _tracksSheet),
               IconButton(tooltip: tr('lock'), icon: const Icon(Icons.lock_open_rounded), onPressed: _lock),

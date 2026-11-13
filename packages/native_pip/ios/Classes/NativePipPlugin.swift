@@ -28,6 +28,26 @@ final class PlayerViewFactory: NSObject, FlutterPlatformViewFactory {
   }
 }
 
+/// System AirPlay button (AVRoutePickerView).
+final class AirPlayButtonView: NSObject, FlutterPlatformView {
+  let picker: AVRoutePickerView
+  init(frame: CGRect) {
+    picker = AVRoutePickerView(frame: frame)
+    picker.tintColor = .white
+    picker.activeTintColor = UIColor(red: 0.906, green: 0.761, blue: 0.490, alpha: 1)
+    picker.backgroundColor = .clear
+    if #available(iOS 13.0, *) { picker.prioritizesVideoDevices = true }
+    super.init()
+  }
+  func view() -> UIView { picker }
+}
+
+final class AirPlayButtonFactory: NSObject, FlutterPlatformViewFactory {
+  func create(withFrame frame: CGRect, viewIdentifier viewId: Int64, arguments args: Any?) -> FlutterPlatformView {
+    AirPlayButtonView(frame: frame)
+  }
+}
+
 public class NativePipPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, AVPictureInPictureControllerDelegate {
   private let player = AVPlayer()
   private var sink: FlutterEventSink?
@@ -45,11 +65,14 @@ public class NativePipPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, AVP
     let ev = FlutterEventChannel(name: "iptv/avplayer/events", binaryMessenger: registrar.messenger())
     ev.setStreamHandler(inst)
     registrar.register(PlayerViewFactory(plugin: inst), withId: "iptv/avplayer_view")
+    registrar.register(AirPlayButtonFactory(), withId: "iptv/airplay_button")
   }
 
   override init() {
     super.init()
     player.appliesMediaSelectionCriteriaAutomatically = false
+    player.allowsExternalPlayback = true
+    player.usesExternalPlaybackWhileExternalScreenIsActive = true
     timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
       self?.tick()
     }

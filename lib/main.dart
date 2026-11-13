@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'api.dart';
+import 'cast.dart';
 import 'l10n.dart';
 import 'screens/login.dart';
 import 'screens/shell.dart';
@@ -13,6 +14,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   await Store.init();
+  Cast.init();
   L10n.i.ar = Store.get('lang') == 'ar';
   Widget first = const LoginScreen();
   if (Api.i.restore()) {
