@@ -55,7 +55,7 @@ if p.exists():
     extra = ''
     if 'NSAppTransportSecurity' not in s:
         extra += ('\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n'
-                  '\t\t<key>NSAllowsArbitraryLoadsForMedia</key>\n\t\t<true/>\n\t</dict>\n')
+                  '\t</dict>\n')
     if 'ITSAppUsesNonExemptEncryption' not in s:
         extra += '\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>\n'
     if 'NSLocalNetworkUsageDescription' not in s:
